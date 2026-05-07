@@ -16,6 +16,29 @@ from .base import BaseRetriever
 RGA_SEMAPHORE = asyncio.Semaphore(value=GREP_CONCURRENT_LIMIT)
 
 
+def _rga_config_path() -> Optional[str]:
+    """Resolve the bundled rga config file (config/rga_config.json).
+
+    Works for Docker installs (WORKDIR /app), editable installs, and pip installs.
+    Returns None when the config file cannot be located.
+    """
+    here = Path(__file__).resolve()
+
+    # 1. Docker layout: /app/src/sirchmunk/retrieve/ -> /app/config/
+    project_root = here.parent.parent.parent.parent
+    candidate = project_root / "config" / "rga_config.json"
+    if candidate.is_file():
+        return str(candidate)
+
+    # 2. src layout (editable install): /proj/src/sirchmunk/retrieve/ -> /proj/config/
+    project_root = here.parent.parent.parent
+    candidate = project_root / "config" / "rga_config.json"
+    if candidate.is_file():
+        return str(candidate)
+
+    return None
+
+
 class GrepRetriever(BaseRetriever):
     """A Python wrapper for ripgrep-all (rga), exposing its functionality via static methods.
 
@@ -29,7 +52,9 @@ class GrepRetriever(BaseRetriever):
     def __init__(self, work_path: Union[str, Path] = None, **kwargs):
         super().__init__()
 
-        self.work_path: Path = Path(work_path or DEFAULT_SIRCHMUNK_WORK_PATH).expanduser().resolve()
+        self.work_path: Path = (
+            Path(work_path or DEFAULT_SIRCHMUNK_WORK_PATH).expanduser().resolve()
+        )
         self.rga_cache: Path = (
             self.work_path / StorageStructure.CACHE_DIR / StorageStructure.GREP_DIR
         )
@@ -293,7 +318,12 @@ class GrepRetriever(BaseRetriever):
         Returns:
             CompletedProcess object with parsed stdout (as list of dicts if json_output=True).
         """
-        cmd = ["rga", "--no-config"]  # disable user config for reproducibility
+        config_file = _rga_config_path()
+        cmd = (
+            ["rga", f"--rga-config-file={config_file}"]
+            if config_file
+            else ["rga", "--no-config"]
+        )
         if json_output:
             cmd.append("--json")
         cmd.extend(args)
@@ -317,7 +347,9 @@ class GrepRetriever(BaseRetriever):
                     # preprocessing).  If stdout has content, continue
                     # to parse — valid matches may still be present.
                     if not result.stdout.strip():
-                        raise RuntimeError(f"rga execution failed: {result.stderr.strip()}")
+                        raise RuntimeError(
+                            f"rga execution failed: {result.stderr.strip()}"
+                        )
                     logger.warning(
                         f"rga returned exit code {result.returncode} with partial errors "
                         f"(first 300 chars): {result.stderr.strip()[:300]}"
@@ -339,9 +371,14 @@ class GrepRetriever(BaseRetriever):
 
     @staticmethod
     async def _run_rga_async(
-            args: List[str], json_output: bool = True, timeout: float = 60.0
+        args: List[str], json_output: bool = True, timeout: float = 60.0
     ) -> Dict[str, Any]:
-        cmd = ["rga", "--no-config"]
+        config_file = _rga_config_path()
+        cmd = (
+            ["rga", f"--rga-config-file={config_file}"]
+            if config_file
+            else ["rga", "--no-config"]
+        )
         if json_output:
             cmd.append("--json")
         cmd.extend(args)
@@ -359,7 +396,9 @@ class GrepRetriever(BaseRetriever):
                     *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
             except FileNotFoundError:
-                raise RuntimeError("ripgrep-all ('rga') not found. Please install it first.")
+                raise RuntimeError(
+                    "ripgrep-all ('rga') not found. Please install it first."
+                )
 
             try:
                 stdout, stderr = await asyncio.wait_for(
@@ -527,9 +566,7 @@ class GrepRetriever(BaseRetriever):
         elif returncode == 1:
             return []
         else:
-            raise RuntimeError(
-                f"ripgrep-all failed (exit {returncode}): {stderr_str}"
-            )
+            raise RuntimeError(f"ripgrep-all failed (exit {returncode}): {stderr_str}")
 
     @staticmethod
     async def _retrieve_or(
@@ -558,9 +595,7 @@ class GrepRetriever(BaseRetriever):
             # Multiple terms + literal mode: search each term separately
             # then merge results to simulate OR.
             async def _search_one(term: str):
-                return await GrepRetriever._retrieve_single(
-                    pattern=term, **kwargs
-                )
+                return await GrepRetriever._retrieve_single(pattern=term, **kwargs)
 
             results_lists = await _aio.gather(*[_search_one(t) for t in terms])
 
@@ -763,10 +798,10 @@ class GrepRetriever(BaseRetriever):
         timeout: float = 60.0,
     ) -> List[Dict[str, Any]]:
         """Search for files by filename patterns (fast file name matching).
-        
+
         This method performs filename-only search without reading file contents,
         making it significantly faster than content-based search.
-        
+
         Args:
             patterns: Single pattern (str) or list of patterns (List[str]) to match filenames.
                      Patterns are treated as regex by default (e.g., "test.*\\.py").
@@ -778,7 +813,7 @@ class GrepRetriever(BaseRetriever):
             file_type: Search only files of given type (e.g., 'py', 'md').
             rank: If True, rank results by pattern match quality (e.g., exact match > partial match).
             timeout: Maximum time in seconds to wait for the search to complete.
-        
+
         Returns:
             List of match objects with structure:
             [
@@ -794,10 +829,12 @@ class GrepRetriever(BaseRetriever):
         # Normalize patterns
         if isinstance(patterns, str):
             patterns = [patterns]
-        
-        logger.debug(f"retrieve_by_filename called with patterns: {patterns}, path: {path}, "
-                    f"include: {include}, exclude: {exclude}, max_depth: {max_depth}")
-        
+
+        logger.debug(
+            f"retrieve_by_filename called with patterns: {patterns}, path: {path}, "
+            f"include: {include}, exclude: {exclude}, max_depth: {max_depth}"
+        )
+
         # Normalize paths
         if path is None:
             paths = ["."]
@@ -805,7 +842,7 @@ class GrepRetriever(BaseRetriever):
             paths = [str(path)]
         else:
             paths = [str(p) for p in path]
-        
+
         # List all files in the specified paths
         all_files = []
         for search_path in paths:
@@ -821,78 +858,84 @@ class GrepRetriever(BaseRetriever):
             except Exception as e:
                 logger.warning(f"Failed to list files in {search_path}: {e}")
                 continue
-        
+
         if not all_files:
             logger.debug("No files found to search")
             return []
-        
-        logger.debug(f"Searching through {len(all_files)} files with patterns: {patterns}")
-        
+
+        logger.debug(
+            f"Searching through {len(all_files)} files with patterns: {patterns}"
+        )
+
         # Filter files by patterns
         results = []
         for file_path in all_files:
             # Get both absolute and relative paths for proper handling
             file_path_obj = Path(file_path)
             filename = file_path_obj.name
-            
+
             # Check if filename matches any pattern
             for pattern in patterns:
                 try:
                     # Compile regex pattern
                     flags = 0 if case_sensitive else re.IGNORECASE
                     regex = re.compile(pattern, flags)
-                    
+
                     match = regex.search(filename)
                     if match:
                         logger.debug(f"Pattern '{pattern}' matched file: {filename}")
-                        
+
                         # Calculate match score
                         match_score = self._calculate_filename_match_score(
                             filename=filename,
                             pattern=pattern,
-                            case_sensitive=case_sensitive
+                            case_sensitive=case_sensitive,
                         )
-                        
+
                         # Use absolute path if file exists, otherwise keep original path
                         try:
                             abs_path = str(file_path_obj.resolve())
                         except (OSError, RuntimeError):
-                            abs_path = str(file_path_obj.absolute()) if file_path_obj.is_absolute() else file_path
-                        
-                        results.append({
-                            'path': abs_path,
-                            'filename': filename,
-                            'match_score': match_score,
-                            'type': 'filename_match',
-                            'matched_pattern': pattern,
-                        })
+                            abs_path = (
+                                str(file_path_obj.absolute())
+                                if file_path_obj.is_absolute()
+                                else file_path
+                            )
+
+                        results.append(
+                            {
+                                "path": abs_path,
+                                "filename": filename,
+                                "match_score": match_score,
+                                "type": "filename_match",
+                                "matched_pattern": pattern,
+                            }
+                        )
                         break  # Only count each file once (first matching pattern)
-                
+
                 except re.error as e:
                     logger.warning(f"Invalid regex pattern '{pattern}': {e}")
                     continue
-        
+
         logger.debug(f"Found {len(results)} matching files")
-        
+
         # Rank results by match score if requested
         if rank and results:
-            results.sort(key=lambda x: x['match_score'], reverse=True)
-        
+            results.sort(key=lambda x: x["match_score"], reverse=True)
+
         return results
 
     @staticmethod
     def _calculate_filename_match_score(
-        filename: str,
-        pattern: str,
-        case_sensitive: bool = False
+        filename: str, pattern: str, case_sensitive: bool = False
     ) -> float:
         """Calculate relevance score for filename pattern match.
-        
+
         Args:
             filename: The filename that matched
             pattern: The regex pattern that was matched
             case_sensitive: Whether the match was case-sensitive
-        
+
         Returns:
             Score between 0.0 and 1.0, where:
             - 1.0 = exact match (highest priority)
@@ -904,31 +947,33 @@ class GrepRetriever(BaseRetriever):
         # Normalize for comparison
         fn_lower = filename.lower()
         pattern_lower = pattern.lower()
-        
+
         # Remove regex special characters for literal comparison
-        pattern_literal = re.sub(r'[.*+?^${}()|[\]\\]', '', pattern)
+        pattern_literal = re.sub(r"[.*+?^${}()|[\]\\]", "", pattern)
         pattern_literal_lower = pattern_literal.lower()
-        
+
         # Exact match (case-sensitive)
         if filename == pattern or filename == pattern_literal:
             return 1.0
-        
+
         # Exact match (case-insensitive)
-        if not case_sensitive and (fn_lower == pattern_lower or fn_lower == pattern_literal_lower):
+        if not case_sensitive and (
+            fn_lower == pattern_lower or fn_lower == pattern_literal_lower
+        ):
             return 0.9
-        
+
         # Starts with pattern
         if filename.startswith(pattern_literal):
             return 0.8
         if fn_lower.startswith(pattern_literal_lower):
             return 0.75
-        
+
         # Contains pattern (full)
         if pattern_literal in filename:
             return 0.6
         if pattern_literal_lower in fn_lower:
             return 0.55
-        
+
         # Partial match (proportional to match length)
         match_ratio = len(pattern_literal) / max(len(filename), 1)
         return 0.3 + (match_ratio * 0.2)  # Score between 0.3 and 0.5

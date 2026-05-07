@@ -25,27 +25,25 @@ _service: Optional[SirchmunkService] = None
 
 def create_server(config: Config) -> FastMCP:
     """Create and configure FastMCP server instance.
-    
+
     Args:
         config: Configuration object
-    
+
     Returns:
         Configured FastMCP server instance
     """
     global _service
-    
+
     # Initialize service
     _service = SirchmunkService(config)
-    
+
     # Create FastMCP server
     mcp = FastMCP(
         name=config.mcp.server_name,
     )
-    
-    logger.info(
-        f"Creating MCP server: {config.mcp.server_name}"
-    )
-    
+
+    logger.info(f"Creating MCP server: {config.mcp.server_name}")
+
     # Register tools using decorators
     @mcp.tool()
     async def sirchmunk_search(
@@ -216,21 +214,21 @@ def create_server(config: Config) -> FastMCP:
         """
         if _service is None:
             return "Error: Service not initialized"
-        
+
         logger.info(f"sirchmunk_get_cluster: cluster_id={cluster_id}")
-        
+
         try:
             cluster = await _service.get_cluster(cluster_id)
-            
+
             if cluster is None:
                 return f"Cluster not found: {cluster_id}"
-            
+
             return str(cluster)
-        
+
         except Exception as e:
             logger.error(f"Get cluster failed: {e}", exc_info=True)
             return f"Failed to retrieve cluster: {str(e)}"
-    
+
     # NOTE: sirchmunk_list_clusters is intentionally NOT registered as an MCP tool
     # (removed @mcp.tool() to avoid external exposure).  The implementation is
     # kept for internal use by the service layer.
@@ -254,21 +252,21 @@ def create_server(config: Config) -> FastMCP:
         """
         if _service is None:
             return "Error: Service not initialized"
-        
+
         logger.info(f"sirchmunk_list_clusters: limit={limit}, sort_by={sort_by}")
-        
+
         try:
             clusters = await _service.list_clusters(limit=limit, sort_by=sort_by)
-            
+
             if not clusters:
                 return "No knowledge clusters found."
-            
+
             return _format_cluster_list(clusters, sort_by)
-        
+
         except Exception as e:
             logger.error(f"List clusters failed: {e}", exc_info=True)
             return f"Failed to list clusters: {str(e)}"
-    
+
     return mcp
 
 
@@ -311,143 +309,160 @@ def _format_scan_results(result, query: str) -> str:
 
 def _format_filename_results(results: List[Dict[str, Any]], query: str) -> str:
     """Format FILENAME_ONLY mode results.
-    
+
     Args:
         results: List of filename match dictionaries
         query: Original query
-    
+
     Returns:
         Formatted string representation
     """
     lines = [
-        f"# Filename Search Results",
-        f"",
+        "# Filename Search Results",
+        "",
         f"**Query**: `{query}`",
         f"**Found**: {len(results)} matching file(s)",
-        f"",
+        "",
     ]
-    
+
     for i, result in enumerate(results, 1):
         lines.append(f"## {i}. {result.get('filename', 'unknown')}")
         lines.append(f"- **Path**: `{result.get('path', 'unknown')}`")
-        if 'match_score' in result:
+        if "match_score" in result:
             lines.append(f"- **Relevance**: {result['match_score']:.2f}")
         if "matched_pattern" in result:
             lines.append(f"- **Pattern**: `{result['matched_pattern']}`")
         lines.append("")
-    
+
     return "\n".join(lines)
 
 
 def _format_cluster_list(clusters: List[Dict[str, Any]], sort_by: str) -> str:
     """Format cluster list.
-    
+
     Args:
         clusters: List of cluster metadata dictionaries
         sort_by: Sort field used
-    
+
     Returns:
         Formatted string representation
     """
     lines = [
-        f"# Knowledge Clusters",
-        f"",
+        "# Knowledge Clusters",
+        "",
         f"**Total**: {len(clusters)} cluster(s)",
         f"**Sorted by**: {sort_by}",
-        f"",
+        "",
     ]
-    
+
     for i, cluster in enumerate(clusters, 1):
         lines.append(f"## {i}. {cluster.get('name', 'Unnamed')}")
         lines.append(f"- **ID**: `{cluster.get('id', 'unknown')}`")
         lines.append(f"- **Lifecycle**: {cluster.get('lifecycle', 'unknown')}")
         lines.append(f"- **Version**: {cluster.get('version', 0)}")
-        
-        if cluster.get('confidence') is not None:
+
+        if cluster.get("confidence") is not None:
             lines.append(f"- **Confidence**: {cluster['confidence']:.2f}")
-        
-        if cluster.get('hotness') is not None:
+
+        if cluster.get("hotness") is not None:
             lines.append(f"- **Hotness**: {cluster['hotness']:.2f}")
-        
-        if cluster.get('last_modified'):
+
+        if cluster.get("last_modified"):
             lines.append(f"- **Last Modified**: {cluster['last_modified']}")
-        
-        if cluster.get('queries'):
-            queries_preview = ", ".join(f'"{q}"' for q in cluster['queries'][:3])
-            if len(cluster['queries']) > 3:
+
+        if cluster.get("queries"):
+            queries_preview = ", ".join(f'"{q}"' for q in cluster["queries"][:3])
+            if len(cluster["queries"]) > 3:
                 queries_preview += f" (+{len(cluster['queries']) - 3} more)"
             lines.append(f"- **Related Queries**: {queries_preview}")
-        
+
         lines.append(f"- **Evidences**: {cluster.get('evidences_count', 0)}")
         lines.append("")
-    
+
     return "\n".join(lines)
 
 
 async def run_stdio_server(config: Config) -> None:
     """Run MCP server with stdio transport.
-    
+
     This is the default transport mode for Claude Desktop and other
     MCP clients that communicate via standard input/output.
-    
+
     Args:
         config: Configuration object
-    
+
     Note:
         This mode should be launched by an MCP client, not run directly
         in an interactive terminal. Manual terminal input will cause
         JSON parsing errors.
     """
     logger.info("Starting MCP server with stdio transport")
-    
+
     # Create server
     mcp = create_server(config)
-    
+
     # Run with stdio transport
     logger.info("MCP server listening on stdio")
     logger.info("Waiting for MCP client connection...")
-    
+
     await mcp.run_stdio_async()
 
 
 async def run_http_server(config: Config) -> None:
     """Run MCP server with Streamable HTTP transport.
-    
+
     This transport mode runs an HTTP server that communicates via
     HTTP with streaming support, suitable for web-based clients.
-    
+
     Args:
         config: Configuration object
-    
+
     Note:
         HTTP transport requires uvicorn to be installed.
     """
     logger.info(
         f"Starting MCP server with HTTP transport on {config.mcp.host}:{config.mcp.port}"
     )
-    
+
     # Create server
     mcp = create_server(config)
 
     try:
         import uvicorn
-        uv_config = uvicorn.Config(
-            mcp.sse_app(),
-            host=config.mcp.host,
-            port=config.mcp.port,
-            log_level="info",
-        )
-        server = uvicorn.Server(uv_config)
-        await server.serve()
     except ImportError:
         raise RuntimeError(
             "HTTP transport requires uvicorn. Install with: pip install uvicorn"
         )
 
+    is_remote = config.mcp.host in ("0.0.0.0", "::", "")
+
+    if is_remote:
+        try:
+            from mcp.server.transport_security import TransportSecuritySettings
+
+            app = mcp.sse_app(
+                transport_security=TransportSecuritySettings(
+                    enable_dns_rebinding_protection=False,
+                ),
+            )
+        except (ImportError, TypeError):
+            app = mcp.sse_app()
+    else:
+        app = mcp.sse_app()
+
+    uv_config = uvicorn.Config(
+        app,
+        host=config.mcp.host,
+        port=config.mcp.port,
+        log_level="info",
+    )
+    server = uvicorn.Server(uv_config)
+    await server.serve()
+
 
 async def main() -> None:
     """Main entry point for MCP server.
-    
+
     Loads configuration and starts the appropriate transport server.
     """
     logging.basicConfig(
@@ -456,16 +471,16 @@ async def main() -> None:
         stream=sys.stderr,
         force=True,
     )
-    
+
     try:
         # Load configuration from environment
         config = Config.from_env()
-        
+
         # Set log level from config
         logging.getLogger().setLevel(config.mcp.log_level)
-        
+
         logger.info(f"Loaded configuration: transport={config.mcp.transport}")
-        
+
         # Start appropriate transport server
         if config.mcp.transport == "stdio":
             await run_stdio_server(config)
@@ -473,10 +488,10 @@ async def main() -> None:
             await run_http_server(config)
         else:
             raise ValueError(f"Unknown transport: {config.mcp.transport}")
-    
+
     except KeyboardInterrupt:
         logger.info("Received interrupt signal, shutting down")
-    
+
     except Exception as e:
         logger.error(f"Server error: {e}", exc_info=True)
         raise

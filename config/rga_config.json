@@ -1,0 +1,15 @@
+{
+  "custom_adapters": [
+    {
+      "name": "xlsx2csv",
+      "version": 1,
+      "description": "Convert XLSX to CSV via xlsx2csv for full-text search",
+      "extensions": ["xlsx", "xls"],
+      "mimetypes": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"],
+      "binary": "xlsx2csv",
+      "args": ["--all", "-"],
+      "disabled_by_default": false,
+      "match_only_by_mime": false
+    }
+  ]
+}

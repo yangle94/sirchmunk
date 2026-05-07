@@ -18,5 +18,6 @@ sentence-transformers
 modelscope
 python-docx
 openpyxl
+xlsx2csv
 python-pptx
 charset-normalizer
