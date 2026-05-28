@@ -265,6 +265,9 @@ web/out/
 # /Dockerfile  — now tracked for CI
 
 
+# Serena
+.serena/
+
 # benchmarks
 benchmarks/*/data/
 benchmarks/*/.env*
