@@ -104,6 +104,14 @@ COPY src/ src/
 COPY pyproject.toml setup.cfg* README.md ./
 RUN pip install --no-cache-dir -e ".[mcp,web]"
 
+# Verify critical format-support tools are available
+RUN echo "=== Checking format-support tools ===" ; \
+    for tool in rg rga pandoc pdftotext ffmpeg tesseract xlsx2csv; do \
+        if which $$tool > /dev/null 2>&1; then echo "OK: $$tool"; else echo "MISSING: $$tool"; fi; \
+    done ; \
+    python -c "from kreuzberg._extractors._spread_sheet import SpreadSheetExtractor; print('OK: SpreadSheetExtractor')" 2>&1 || echo "MISSING: SpreadSheetExtractor" ; \
+    echo "=== Check complete ==="
+
 # Copy config
 COPY config/ config/
 
