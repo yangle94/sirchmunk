@@ -8,11 +8,10 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Build WebUI static assets
 # ---------------------------------------------------------------------------
-FROM docker.m.daocloud.io/library/node:20-slim AS frontend-builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /build/web
 COPY web/package.json web/package-lock.json* ./
-RUN npm config set registry https://registry.npmmirror.com
 RUN npm ci --prefer-offline
 
 COPY web/ ./
@@ -24,14 +23,10 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # Stage 2: Python runtime
 # ---------------------------------------------------------------------------
-FROM docker.m.daocloud.io/library/python:3.12-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
-
-# Use Alibaba Cloud mirror for Debian apt (faster in China)
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true \
-    && sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true
 
 # System dependencies for all supported file formats:
 #   - poppler-utils: pdftotext (PDF text extraction via rga)
@@ -72,11 +67,11 @@ ARG TARGETARCH
 RUN set -eux; \
     case "${TARGETARCH}" in \
         amd64) \
-            curl -fsSL https://ghfast.top/https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb \
+            curl -fsSL https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb \
                 -o /tmp/rg.deb && dpkg -i /tmp/rg.deb && rm /tmp/rg.deb; \
             RGA_ARCH="x86_64-unknown-linux-musl" ;; \
         arm64) \
-            curl -fsSL https://ghfast.top/https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-unknown-linux-gnu.tar.gz \
+            curl -fsSL https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-unknown-linux-gnu.tar.gz \
                 -o /tmp/rg.tar.gz \
             && tar -xzf /tmp/rg.tar.gz -C /tmp \
             && cp /tmp/ripgrep-14.1.1-aarch64-unknown-linux-gnu/rg /usr/local/bin/ \
@@ -84,7 +79,7 @@ RUN set -eux; \
             RGA_ARCH="aarch64-unknown-linux-gnu" ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac; \
-    curl -fsSL https://ghfast.top/https://github.com/phiresky/ripgrep-all/releases/download/v0.10.10/ripgrep_all-v0.10.10-${RGA_ARCH}.tar.gz \
+    curl -fsSL https://github.com/phiresky/ripgrep-all/releases/download/v0.10.10/ripgrep_all-v0.10.10-${RGA_ARCH}.tar.gz \
         -o /tmp/rga.tar.gz \
     && tar -xzf /tmp/rga.tar.gz -C /tmp \
     && cp /tmp/ripgrep_all-*/rga /usr/local/bin/ \
@@ -98,9 +93,8 @@ WORKDIR /app
 COPY requirements/ requirements/
 RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
-    torch \
-    || pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com torch
-RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    torch
+RUN pip install --no-cache-dir \
     -r requirements/core.txt \
     -r requirements/web.txt \
     -r requirements/mcp.txt
@@ -108,7 +102,7 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trus
 # Copy source code and install
 COPY src/ src/
 COPY pyproject.toml setup.cfg* README.md ./
-RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com -e ".[mcp,web]"
+RUN pip install --no-cache-dir -e ".[mcp,web]"
 
 # Verify critical format-support tools are available
 RUN python -c "\
