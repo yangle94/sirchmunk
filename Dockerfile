@@ -105,32 +105,8 @@ COPY pyproject.toml setup.cfg* README.md ./
 RUN pip install --no-cache-dir -e ".[mcp,web]"
 
 # Verify critical format-support tools are available
-RUN python -c "\
-import shutil, sys\n\
-tools = ['rg', 'rga', 'pandoc', 'pdftotext', 'ffmpeg', 'tesseract']\n\
-missing = [t for t in tools if not shutil.which(t)]\n\
-if missing:\n\
-    print(f'WARNING: Missing tools: {missing}', file=sys.stderr)\n\
-else:\n\
-    print('All format-support tools verified OK')\n\
-" && python -c "\
-import shutil, sys\n\
-py_tools = ['xlsx2csv']\n\
-missing = [t for t in py_tools if not shutil.which(t)]\n\
-if missing:\n\
-    print(f'WARNING: Missing Python CLI tools: {missing}', file=sys.stderr)\n\
-else:\n\
-    print('All Python CLI tools verified OK')\n\
-" && python -c "\
-# Verify kreuzberg can extract Excel files\n\
-import sys\n\
-try:\n\
-    from kreuzberg._extractors._spread_sheet import SpreadSheetExtractor\n\
-    print('kreuzberg Excel extractor available')\n\
-except Exception as e:\n\
-    print(f'WARNING: kreuzberg Excel extractor failed: {e}', file=sys.stderr)\n\
-    sys.exit(1)\n\
-"
+RUN python -c "import shutil; tools=['rg','rga','pandoc','pdftotext','ffmpeg','tesseract','xlsx2csv']; missing=[t for t in tools if not shutil.which(t)]; print(f'WARNING: Missing tools: {missing}', __import__('sys').stderr) if missing else print('All format-support tools verified OK')" \
+    && python -c "from kreuzberg._extractors._spread_sheet import SpreadSheetExtractor; print('kreuzberg Excel extractor available')"
 
 # Copy config
 COPY config/ config/
