@@ -104,10 +104,6 @@ COPY src/ src/
 COPY pyproject.toml setup.cfg* README.md ./
 RUN pip install --no-cache-dir -e ".[mcp,web]"
 
-# Verify critical format-support tools are available
-RUN python -c "import shutil; tools=['rg','rga','pandoc','pdftotext','ffmpeg','tesseract','xlsx2csv']; missing=[t for t in tools if not shutil.which(t)]; print(f'WARNING: Missing tools: {missing}', __import__('sys').stderr) if missing else print('All format-support tools verified OK')" \
-    && python -c "from kreuzberg._extractors._spread_sheet import SpreadSheetExtractor; print('kreuzberg Excel extractor available')"
-
 # Copy config
 COPY config/ config/
 
