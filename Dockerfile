@@ -94,7 +94,12 @@ RUN set -eux; \
 WORKDIR /app
 
 # Install Python dependencies (core + web + mcp — no docs/tests in production)
+# Pre-install PyTorch CPU-only to avoid pulling ~2GB CUDA packages
 COPY requirements/ requirements/
+RUN pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch \
+    || pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com torch
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
     -r requirements/core.txt \
     -r requirements/web.txt \
